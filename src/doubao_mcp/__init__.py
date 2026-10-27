@@ -1,0 +1,2 @@
+"""Doubao desktop MCP bridge."""
+

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doubao-desktop-mcp"
+version = "0.2.1"
+description = "Local MCP bridge for the Windows Doubao desktop client"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=1.26,<2",
+  "pywinauto>=0.6.9,<0.7; sys_platform == 'win32'",
+  "psutil>=6,<8",
+  "websockets>=15,<17",
+]
+
+[project.scripts]
+doubao-desktop-mcp = "doubao_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+doubao_mcp = ["page.js"]
+
