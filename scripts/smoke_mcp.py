@@ -28,7 +28,8 @@ async def main():
         async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=360)) as session:
             await session.initialize()
             names = [t.name for t in (await session.list_tools()).tools]
-            assert len(names) == 8, names
+            assert len(names) == 19, names
+            assert {"doubao_video_options", "doubao_video_configure", "doubao_video_exit"} <= set(names), names
             print(json.dumps({"tools": names}, ensure_ascii=False), flush=True)
             invalid = payload(await session.call_tool("doubao_ask", {"prompt": ""}))
             assert invalid["code"] == "INVALID_PROMPT", invalid

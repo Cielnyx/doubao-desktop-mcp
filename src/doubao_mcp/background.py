@@ -8,7 +8,8 @@ import time
 
 from .cdp import CDP, CDPError
 
-PAGE = Path(__file__).with_name("page.js").read_text(encoding="utf-8")
+PAGE = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
+                 for name in ("page.js", "video.js", "media.js", "tasks.js", "submission.js"))
 
 
 class BackgroundError(RuntimeError):
@@ -45,10 +46,10 @@ class BackgroundDoubao:
         self.connect()
         expression = ("(async()=>{" + PAGE + "\ntry { return await doubao[" + json.dumps(action)
                       + "](" + json.dumps(params, ensure_ascii=True) + "); }"
-                      "catch(e){return {ok:false,code:e.code||'PAGE_ERROR',message:e.message};}})()")
-        result = self.client.evaluate(expression)
+                      "catch(e){return {ok:false,code:e.code||'PAGE_ERROR',message:e.message,details:e.details||{}};}})()")
+        result = self.client.evaluate(expression, timeout=55 if action.startswith("video_") else 15)
         if isinstance(result, dict) and result.get("ok") is False:
-            raise BackgroundError(result["code"], result["message"])
+            raise BackgroundError(result["code"], result["message"], **result.get("details", {}))
         return result
 
     def status(self):
@@ -56,6 +57,23 @@ class BackgroundDoubao:
 
     def inspect(self):
         return self.page("inspect")
+
+    def video_options(self):
+        return self.page("video_options")
+
+    def video_configure(self, model=None, ratio=None, duration=None):
+        if model is not None and (not isinstance(model, str) or not model.strip() or len(model) > 100):
+            raise BackgroundError("INVALID_VIDEO_MODEL", "model 应为查询工具返回的模型名称。")
+        if ratio == "自动":
+            ratio = "auto"
+        if ratio is not None and (not isinstance(ratio, str) or not re.fullmatch(r"auto|[1-9]\d?:[1-9]\d?", ratio)):
+            raise BackgroundError("INVALID_VIDEO_RATIO", "ratio 应为 auto 或 16:9 等比例字符串。")
+        if duration is not None and (type(duration) is not int or not 1 <= duration <= 300):
+            raise BackgroundError("INVALID_VIDEO_DURATION", "duration 应为 1–300 的整数秒数，实际范围以当前模型选项为准。")
+        return self.page("video_configure", model=model, ratio=ratio, duration=duration)
+
+    def video_exit(self):
+        return self.page("video_exit")
 
     def _wait_ready(self, target_id=None, blank=False):
         deadline = time.monotonic() + 15
@@ -214,7 +232,7 @@ class BackgroundDoubao:
             self.open_conversation(conversation_id, title)
         if new_chat:
             self.new_chat()
-        self.page("check_idle")
+        self.page("check_text_mode")
         self.page("scroll_messages", position="bottom")
         time.sleep(0.2)
         before = self.page("snapshot")

@@ -35,8 +35,9 @@ const doubao = (() => {
     const items = messages();
     const last = items.at(-1);
     const stopping = !!document.querySelector('[data-testid="chat_input_stop_button"], [data-testid="stop_generation_button"], #flow-end-msg-stop');
+    const completedVideo = !!last && doubaoTasks.completedMessage(last.id);
     return {conversation_id:conversationId(), title:document.title.replace(/ - 豆包$/, ''), messages:items,
-      generating:stopping || items.some(m=>m.streaming) || !!(last && (last.role==='user' || !last.complete))};
+      generating:stopping || items.some(m=>m.streaming) || !!(last && (last.role==='user' || (!last.complete && !completedVideo)))};
   }
   function idle() {
     if (snapshot().generating) fail('GENERATING', '豆包有未完成的回复，已停止，避免中断现有对话。');
@@ -44,6 +45,9 @@ const doubao = (() => {
     const container = document.querySelector('[data-testid="chat_input"]');
     if (container?.querySelector('[data-testid*="attachment"], [data-testid*="uploaded_file"]'))
       fail('ATTACHMENT_PRESENT', '输入区有附件，请先手动处理后再发送文本。');
+  }
+  function textMode() {
+    if (doubaoVideo.active()) fail('VIDEO_MODE_ACTIVE', '当前处于视频生成模式；请先调用 doubao_video_exit 返回普通对话再发送文本。');
   }
   function sidebarScroller() {
     let e = document.querySelector('[data-testid="chat_list_wrapper"]');
@@ -68,11 +72,22 @@ const doubao = (() => {
       try { hasDraft=!!draft(); available=true; } catch {}
       const s=snapshot();
       return {ok:true,running:true,background:true,transport:'cdp',editor_available:available,
-        has_draft:hasDraft,generating:s.generating,conversation_id:s.conversation_id,title:s.title};
+        has_draft:hasDraft,generating:s.generating,conversation_id:s.conversation_id,title:s.title,
+        input_mode:doubaoVideo.active()?'video':'chat'};
     },
     snapshot,
     draft:()=>({text:draft()}),
     check_idle:()=>{idle(); return {ok:true};},
+    check_text_mode:()=>{idle(); textMode(); return {ok:true};},
+    video_options:()=>doubaoVideo.options(),
+    video_current:()=>({ok:true,current:doubaoVideo.current()}),
+    video_configure:params=>doubaoVideo.configure(params),
+    video_exit:()=>doubaoVideo.exit(),
+    video_task_status:params=>doubaoTasks.scan(params),
+    video_preflight:params=>doubaoSubmission.verify(params),
+    video_send_once:params=>doubaoSubmission.send(params),
+    video_confirmation_preflight:params=>doubaoSubmission.confirmVerify(params),
+    video_confirm_once:params=>doubaoSubmission.confirmSend(params),
     conversations() {
       const items=all('a[id^="conversation_"]').filter(e=>/^conversation_\d+$/.test(e.id)).map(e=>({
         id:e.id.slice('conversation_'.length),title:norm(e.innerText),
@@ -99,11 +114,12 @@ const doubao = (() => {
       return {ok:true};
     },
     focus_editor() {
-      idle(); const e=editor(); e.focus({preventScroll:true});
+      idle(); textMode(); const e=editor(); e.focus({preventScroll:true});
       if(document.activeElement!==e && !e.contains(document.activeElement)) fail('EDITOR_FOCUS_FAILED','后台页面输入框未获得文档焦点。');
       return {ok:true};
     },
     submit({prompt}) {
+      textMode();
       if(snapshot().generating) fail('GENERATING','豆包正在生成，未提交。');
       if(draft()!==norm(prompt)) fail('INPUT_MISMATCH','草稿与提示词不一致，未提交。');
       const buttons=all('[data-testid="chat_input_send_button"], #flow-end-msg-send');

@@ -53,6 +53,8 @@ Codex：
 只更新名为 `doubao-desktop` 的服务，保留其他 Codex 配置、此服务的工具权限等设置，并备份原配置。
 随后重新连接此 MCP，必要时重启 Codex，让客户端重新读取启动路径及工具列表。
 
+本版本为 0.4.0，共19个工具，支持图片上传与真实@绑定、视频准备/提交/确认、原任务查询和成品下载。更新旧安装时先运行 `scripts\setup.ps1`，再重新连接 MCP。必须保留 `.runtime/video_tasks` 原有幂等账本；超时后只查询原request_id，不能换编号重发。
+
 其他支持本地 stdio MCP 的客户端：
 
 参考安装后生成的 `mcp-config.json`，按该客户端的配置格式添加 `doubao-desktop`。
@@ -70,6 +72,7 @@ Codex：
 第一条仅在通道未启用时重启豆包一次，绑定本机 `127.0.0.1:9229`；第二条只检查 MCP 工具、状态和当前回复，不发送测试消息。
 后台通道未启用时，MCP 返回错误，不回退为前台键鼠操作。
 豆包暂未启动时，可先用 `scripts\smoke_mcp.py --protocol-only` 仅验证 MCP 服务启动和工具发现。
+也可用项目Python执行 `scripts\enable_background.py --restart --exe "C:\实际安装目录\Doubao.exe"` 直接启动本机已安装的豆包；安装路径不能照搬另一台电脑。
 
 ## 复制哪些文件
 
