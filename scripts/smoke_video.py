@@ -49,7 +49,7 @@ async def main():
         async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=360)) as session:
             await session.initialize()
             names = {t.name for t in (await session.list_tools()).tools}
-            assert len(names) == 19, names
+            assert len(names) == 21, names
             status = await call(session, "doubao_status")
             assert status["editor_available"] and not status["has_draft"] and not status["generating"], status
             if options.minimize:

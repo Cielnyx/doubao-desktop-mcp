@@ -55,3 +55,15 @@
 - 默认前缀的真实MCP准备验收通过：自动写入实际模型、“直接开始生成/不再询问”和按原提示词执行的约束；两次传原文、再传已包装全文，结果完全一致且只出现一次前缀。该验收未提交新任务，测试草稿已清理。
 
 本机私有验收记录：`.runtime/media-smoke.json`、`.runtime/task-smoke.json`、`.runtime/e2e-download.json`、`.runtime/prefix-smoke.json`。真实账号资源、任务标识、提示词账本及测试成品均不进入公开ZIP。
+
+## 0.5.0 已添加账号列表与切换
+
+日期：2026-10-29。
+
+- 101项Python单元测试通过，新增账号目标验证、同名昵称返回候选、当前账号无操作、切换前身份变化、页面重载导致WebSocket关闭后重连且不重复点击、重新登录提示及超时不重复点击。
+- 11项Node账号菜单测试通过，覆盖单账号隐藏行、超过两个账号的“更多账号”子菜单、按真实账号ID选择、草稿/生成/附件与弹窗保护、切换期间草稿出现、禁用菜单项、已提交React分支身份校验，以及仅返回公开字段。
+- 真实stdio MCP发现21个工具，新增 `doubao_list_accounts` 和 `doubao_switch_account`。真实客户端读取到1个已添加账号；切换到当前账号返回 `already_active:true`、`switch_attempted:false`。不存在的目标返回 `ACCOUNT_NOT_FOUND`，当前对话及草稿状态保持一致。
+- 首次真实跨账号切换触发客户端重载，旧WebSocket关闭，实际已换号但工具未收到回执。修复为捕获连接关闭并只轮询新页面、核对身份，不重新点击；补充该故障的回归测试。
+- 用户添加第二个账号后，修复版本通过真实stdio MCP完成A→B及A→B→A双向验收，分别采样188次和310次，豆包未成为前台窗口。完成后恢复测试开始时的账号；未发送消息、提交生成、退出登录或新增账号。
+- 私有记录为 `.runtime/account-smoke.json`、`.runtime/account-switch-first-return.json`，不进入公开ZIP。公开工具只返回账号ID、昵称、当前标记，不读取登录凭据。
+- 账号过期的真实登录弹窗尚未实测，该分支由模拟测试覆盖。复验命令为 `scripts/smoke_accounts.py --target-account-id 目标ID --restore`。

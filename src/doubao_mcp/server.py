@@ -11,6 +11,8 @@ mcp = FastMCP(
     instructions=("操作用户本机已登录的豆包 Windows 桌面端。先检查状态。"
                   "全程后台操作，不激活原生窗口，不发送系统键鼠事件。提问默认继续当前对话，明确要求时才 new_chat=true。"
                   "可以列出、按标题或 ID 打开对话，并读取多轮历史。重名标题必须让用户选择 ID。"
+                  "支持列出客户端已添加账号并按ID或唯一昵称切换；先确认用户目标账号，切换后重新查询视频选项。"
+                  "切换结果未确认时先列出账号检查身份，不自动重试。新账号登录与验证码由用户完成。"
                   "支持后台设置视频参数、上传图片并绑定真实@引用。视频提交需要完整提示词和唯一request_id，核验后仅提交一次。"
                   "视频准备和提交会自动在最前面加入实际模型名称、直接生成、不再询问和严格按原提示词执行的约束。"
                   "用户已明确授权本次生成时，如豆包仍要求参数确认，可核对一致后直接调用video_confirm，无需再次询问用户是否生成。"
@@ -32,6 +34,28 @@ async def doubao_status() -> dict:
 async def doubao_inspect() -> dict:
     """后台只读检查豆包页面控件，用于诊断客户端版本或布局变化。"""
     return await invoke("inspect")
+
+
+@mcp.tool(annotations=WRITE)
+async def doubao_list_accounts() -> dict:
+    """后台列出豆包客户端已添加的账号ID、昵称和当前账号，短暂展开并恢复账号菜单。
+
+    只返回账号公开标识，不读取Cookie或登录凭据。不退出登录、不添加账号、不切换账号。
+    首次添加账号需在豆包手动完成登录。仅一个已添加账号时can_switch=false。
+    """
+    return await invoke("list_accounts")
+
+
+@mcp.tool(annotations=WRITE)
+async def doubao_switch_account(account_id: str | None = None, nickname: str | None = None, timeout: int = 30) -> dict:
+    """后台切换到客户端已添加的账号，核对真实账号ID后才报告成功。
+
+    account_id或完整nickname选一；昵称重名时返回候选，不猜测。timeout为5–60秒。
+    有草稿、附件或正在生成的回复时停止。使用原生账号菜单，不导入导出Cookie，不退出登录。
+    最多点击一次；结果不确定时先调用doubao_list_accounts检查身份，不能自动重试。
+    账号登录失效时需用户扫码或验证码。视频旧任务需回原账号查询；换号后重新查询模型与参数。
+    """
+    return await invoke("switch_account", account_id=account_id, nickname=nickname, timeout=timeout)
 
 
 @mcp.tool(annotations=WRITE)

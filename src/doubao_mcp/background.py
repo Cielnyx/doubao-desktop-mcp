@@ -9,7 +9,7 @@ import time
 from .cdp import CDP, CDPError
 
 PAGE = "\n".join(Path(__file__).with_name(name).read_text(encoding="utf-8")
-                 for name in ("page.js", "video.js", "media.js", "tasks.js", "submission.js"))
+                 for name in ("page.js", "video.js", "media.js", "tasks.js", "submission.js", "accounts.js"))
 
 
 class BackgroundError(RuntimeError):

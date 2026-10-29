@@ -10,6 +10,7 @@ from .tasks import TaskError
 from .downloads import DownloadError
 from .workflow import VideoWorkflow
 from .prompts import PromptError
+from .accounts import AccountDriver
 
 
 def main():
@@ -26,6 +27,10 @@ def main():
                 result = getattr(driver, action)()
             elif action == "video_configure":
                 result = driver.video_configure(request.get("model"), request.get("ratio"), request.get("duration"))
+            elif action == "list_accounts":
+                result = AccountDriver(driver).list()
+            elif action == "switch_account":
+                result = AccountDriver(driver).switch(request.get("account_id"), request.get("nickname"), request.get("timeout",30))
             elif action == "image_upload":
                 result = MediaDriver(driver).upload(request.get("paths"), request.get("timeout",90))
             elif action == "image_bind":

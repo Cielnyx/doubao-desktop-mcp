@@ -1,6 +1,6 @@
 # 豆包桌面端 MCP
 
-让 Codex 等 MCP 客户端在后台使用本机已登录的豆包 Windows 桌面端，管理对话、上传图片并绑定真实引用、提交和查询视频任务、下载成品。当前版本：0.4.0，共19个工具。
+让 Codex 等 MCP 客户端在后台使用本机已登录的豆包 Windows 桌面端，切换已添加账号、管理对话、上传图片并绑定真实引用、提交和查询视频任务、下载成品。当前版本：0.5.0，共21个工具。
 
 调用路径：MCP 客户端 → Python stdio 服务 → 独立驱动进程 → 本机 CDP → 豆包页面。
 正常调用不激活原生窗口、不移动鼠标、不发送系统键盘事件，也不占用剪贴板；豆包可以保持最小化。
@@ -11,6 +11,8 @@
 | --- | --- |
 | `doubao_status` | 检查后台通道、输入框、当前对话、草稿和生成状态 |
 | `doubao_inspect` | 后台检查页面控件，用于版本适配和故障诊断 |
+| `doubao_list_accounts` | 列出客户端已添加账号的ID、昵称及当前账号，恢复账号菜单 |
+| `doubao_switch_account` | 按ID或唯一昵称后台切换已添加账号，回读真实身份；草稿或生成中停止 |
 | `doubao_new_chat` | 后台新建空白对话 |
 | `doubao_ask` | 后台发送文本并读取新的完整回复；默认继续当前对话 |
 | `doubao_read_reply` | 只读获取当前对话最新回复及生成状态 |
@@ -28,6 +30,28 @@
 | `doubao_video_task_status` | 按原请求或真实消息/任务ID查询状态，不重发 |
 | `doubao_video_confirm` | 待确认时核对豆包列出的参数，最多发送一次生成确认 |
 | `doubao_video_download` | 根据真实完成任务下载视频，读取MP4实际时长和尺寸 |
+
+## 切换账号
+
+先调用 `doubao_list_accounts` 获取 `accounts` 和 `current_account`。账号ID是字符串，昵称重名时必须使用ID。
+然后调用 `doubao_switch_account`，下面两种参数选一种：
+
+```json
+{"account_id":"从账号列表取得的数字ID", "timeout":30}
+{"nickname":"完整且唯一的账号昵称"}
+```
+
+切换使用豆包头像菜单中的实际账号项，包括“更多账号”子菜单；回读目标ID、输入区就绪且没有未处理弹窗后才返回 `identity_verified:true`。已有草稿、附件、正在生成的回复或未处理弹窗时停止；切换到当前账号直接返回 `already_active:true`，不会点击。
+
+只支持客户端已经添加的账号。首次使用新账号，需在豆包左下角头像菜单选择“添加账号”，手动扫码或完成验证码；只有一个账号时列表返回 `can_switch:false`。登录失效返回 `ACCOUNT_LOGIN_REQUIRED`，不会尝试输入凭据。账号列表仅返回ID、昵称和当前标记，不导出Cookie、Token或登录资料。
+
+切换只点击一次。结果不确定或超时，先重新调用 `doubao_list_accounts` 检查身份，不自动重复切换。换号后重新查询视频模型与参数；原账号的对话和视频任务需切回原账号访问。视频请求账本继续保留，全局 `request_id` 不能跨账号复用为新提交。
+
+默认执行列出账号与当前账号无操作验收：`python scripts/smoke_accounts.py`。只有明确要切换真实账号时才运行 `python scripts/smoke_accounts.py --target-account-id 目标数字ID --restore`；`--restore` 会在成功后切回测试开始时的账号。测试期间从其他应用执行，以验证豆包未成为前台。
+
+本机已实测两个已添加账号之间的双向切换、页面重载后的重连和身份回读；切换期间豆包未成为前台窗口。账号登录过期的真实弹窗尚未实测。
+
+## 对话与历史记录
 
 提问示例：
 
@@ -164,7 +188,7 @@ codex mcp get doubao-desktop
 .\.venv\Scripts\python.exe scripts\package_portable.py
 ```
 
-打包同时输出 `dist/doubao-desktop-v0.4.0-windows.zip` 与同名 `.sha256` 校验文件，方便上传 GitHub Release。ZIP 是源码安装包，目标电脑仍需按照安装说明配置 Python、依赖及已登录的豆包。
+打包同时输出 `dist/doubao-desktop-v0.5.0-windows.zip` 与同名 `.sha256` 校验文件，方便上传 GitHub Release。ZIP 是源码安装包，目标电脑仍需按照安装说明配置 Python、依赖及已登录的豆包。
 
 ## 行为与范围
 

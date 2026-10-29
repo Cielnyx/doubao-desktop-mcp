@@ -19,6 +19,8 @@ async def invoke(action: str, **parameters) -> dict:
         deadline = float(parameters.get("timeout", 180 if action == "video_download" else 90)) + 40
     elif action == "ask":
         deadline = float(parameters.get("timeout", 120)) + 45
+    elif action == "switch_account":
+        deadline = float(parameters.get("timeout", 30)) + 45
     else:
         deadline = 90 if action.startswith("video_") else {"read_history": 90, "open_conversation": 60}.get(action, 50)
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
@@ -38,6 +40,9 @@ async def invoke(action: str, **parameters) -> dict:
         await proc.communicate()
         if asyncio.current_task().cancelling():
             raise
+        if action == "switch_account":
+            return {"ok":False, "code":"DRIVER_TIMEOUT", "switch_attempted":True, "no_retry":True,
+                    "message":"账号切换超时，结果未确认。请先列出账号核实当前身份，不要自动重试。"}
         return {"ok": False, "code": "DRIVER_TIMEOUT",
                 "request_id": parameters.get("request_id"), "no_resend": action == "video_submit",
                 "message": "桌面驱动超时。操作可能已执行；视频请按原request_id查询，其他发送请先读回复，禁止自动重发。"}
