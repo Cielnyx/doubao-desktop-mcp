@@ -127,7 +127,7 @@ const doubaoTasks = (() => {
     let complete=!scroller,stable=0,previous=null;
     const deadline=Date.now()+16000;
     try {
-      if(scan_history && scroller) { scroller.scrollTop=scroller.scrollHeight; await new Promise(r=>setTimeout(r,200)); }
+      if(scan_history && scroller && !rows().some(r=>message_id ? r.message_id===message_id : task_id ? r.task_ids.some(t=>t.id===task_id) : false)) { scroller.scrollTop=scroller.scrollHeight; await new Promise(r=>setTimeout(r,200)); }
       while(true) {
         if(location.pathname!==route)throw Object.assign(new Error('查询任务期间对话发生变化。'),{code:'CONVERSATION_CHANGED'});
         for(const record of rows())collected.set(record.message_id+':'+(record.card?.task_id ?? ''),record);

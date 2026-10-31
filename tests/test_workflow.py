@@ -283,7 +283,7 @@ class WorkflowTests(unittest.TestCase):
         with patch("doubao_mcp.workflow.download_video") as download:
             with self.assertRaises(BackgroundError) as error:
                 workflow.download("V:/output",request_id="test-request")
-        self.assertEqual(error.exception.code,"VIDEO_RESOURCE_UNVERIFIED")
+        self.assertEqual(error.exception.code,"RESOURCE_IDENTITY_UNVERIFIED")
         download.assert_not_called()
 
     def test_completed_download_uses_task_resource_and_preserves_real_ids(self):
@@ -291,9 +291,9 @@ class WorkflowTests(unittest.TestCase):
         workflow.status=Mock(return_value={"ok":True,"status":"completed","conversation_id":"real-conversation",
             "message_id":"real-message","task_id":"real-task","videos":[
                 {"url":"https://media.example/signed.mp4","source":"client_card_metadata","duration":4,
-                 "width":1280,"height":720,"expected_bytes":1234}]})
+                 "width":1280,"height":720,"expected_bytes":1234,"message_id":"real-message","task_id":"real-task"}]})
         with patch("doubao_mcp.workflow.download_video",return_value={"ok":True,"downloaded":True,"path":"V:/output/result.mp4"}) as download:
-            result=workflow.download("V:/output",request_id="test-request",filename="result.mp4")
+            result=workflow.download("V:/output",request_id="test-request",filename="result.mp4",resource_kind="preview")
         self.assertEqual(download.call_args.args,("https://media.example/signed.mp4","V:/output"))
         self.assertEqual(download.call_args.kwargs["expected_metadata"],{"duration":4,"width":1280,"height":720,"expected_bytes":1234})
         self.assertEqual(result["task_id"],"real-task")

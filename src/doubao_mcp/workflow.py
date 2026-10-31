@@ -175,26 +175,62 @@ class VideoWorkflow:
                     'status':'submission_unknown','reason':str(error),
                     'message':'确认已点击，但暂时无法读取原任务；请只查询原request_id。'}
 
+    def open_detail(self, request_id=None, conversation_id=None, message_id=None, task_id=None, timeout=30):
+        from .detail import open_detail
+        if type(timeout) is not int or not 5 <= timeout <= 60:
+            raise BackgroundError('INVALID_TIMEOUT','详情 timeout 必须为 5–60 秒。')
+        status = self.status(request_id, conversation_id, message_id, task_id)
+        return open_detail(self.driver, status, timeout)
+
     def download(self, directory, request_id=None, conversation_id=None, message_id=None, task_id=None,
-                 filename=None, video_index=0, timeout=180):
+                 filename=None, video_index=None, timeout=180, resource_kind='unwatermarked', open_detail_if_needed=True):
+        from urllib.parse import urlparse, parse_qs
+        from .detail import open_detail, _evaluate
         if type(timeout) is not int or not 10 <= timeout <= 240:
             raise BackgroundError('INVALID_TIMEOUT', '下载timeout必须为10–240秒。')
+        if resource_kind not in {'unwatermarked','preview'} or type(open_detail_if_needed) is not bool:
+            raise BackgroundError('INVALID_RESOURCE_KIND', '资源类型或详情选项无效。')
+        if video_index is not None and (type(video_index) is not int or video_index < 0):
+            raise BackgroundError('VIDEO_RESOURCE_UNAVAILABLE','资源索引无效。')
         status = self.status(request_id, conversation_id, message_id, task_id)
         if status.get('status') != 'completed':
-            return {**status, 'ok':False, 'code':'VIDEO_NOT_COMPLETED', 'downloaded':False,
-                    'message':'原视频任务尚未确认完成，未开始下载。'}
+            return {**status, 'ok':False, 'code':'VIDEO_NOT_COMPLETED', 'downloaded':False}
         videos = status.get('videos') or []
-        if type(video_index) is not int or not 0 <= video_index < len(videos):
-            raise BackgroundError('VIDEO_RESOURCE_UNAVAILABLE', '未找到指定的真实成品资源；请查询原任务。', status=status)
-        video = videos[video_index]
-        if video.get('source') not in {'client_card_metadata','rendered_video_player'} or not video.get('url'):
-            raise BackgroundError('VIDEO_RESOURCE_UNVERIFIED', '视频资源未关联到真实任务卡片，停止下载。')
-        expected = {k:video[k] for k in ('duration','width','height','expected_bytes') if video.get(k) is not None}
-        if request_id:
-            expected['duration'] = self.store.get(request_id)['payload']['duration']
-        result = download_video(video['url'], directory, filename=filename, expected_metadata=expected, timeout=timeout)
-        result.update(request_id=request_id, conversation_id=status.get('conversation_id'),
-                      message_id=status.get('message_id'), task_id=status.get('task_id'))
-        if request_id:
-            self.store.update(request_id, last_download=result)
+        def lr(v): return parse_qs(urlparse(v.get('url','')).query).get('lr',[None])[0]
+        if resource_kind == 'unwatermarked':
+            if open_detail_if_needed:
+                try:
+                    detail = open_detail(self.driver, status, min(timeout,30))
+                except BackgroundError as error:
+                    if error.code == 'DETAIL_OPEN_TIMEOUT':
+                        raise BackgroundError('FORMAL_RESOURCE_UNAVAILABLE','正式资源不可用。') from error
+                    raise
+            else:
+                self.driver.page('check_idle')
+                state = _evaluate(self.driver, 'inspect', status)
+                if len(state['matches']) != 1:
+                    raise BackgroundError('FORMAL_RESOURCE_UNAVAILABLE','正式资源不可用。')
+                detail = {'resource':{**state['matches'][0],'source':'rendered_video_player'}}
+            video = detail['resource']
+            if lr(video) != 'unwatermarked':
+                raise BackgroundError('FORMAL_RESOURCE_UNAVAILABLE','正式资源不可用。')
+            refreshed = self.status(None, status['conversation_id'], status['message_id'], status['task_id'])
+            matching = [i for i,v in enumerate(refreshed.get('videos') or []) if v.get('url') == video['url']]
+            selected_index = matching[0] if len(matching)==1 else None
+            if video_index is not None and (not matching or video_index != selected_index):
+                raise BackgroundError('VIDEO_RESOURCE_UNAVAILABLE','指定索引与正式资源不一致。')
+            verified = True
+        else:
+            eligible=[(i,v) for i,v in enumerate(videos) if v.get('source')=='client_card_metadata' and v.get('url') and lr(v) != 'unwatermarked' and v.get('task_id')==status.get('task_id') and v.get('message_id')==status.get('message_id')]
+            if video_index is not None: eligible=[pair for pair in eligible if pair[0]==video_index]
+            if not eligible: raise BackgroundError('VIDEO_RESOURCE_UNAVAILABLE','预览资源不可用。')
+            selected_index,video=eligible[0]; verified=True
+        expected = {k:video[k] for k in ('duration','width','height','expected_bytes') if video.get(k)}
+        if request_id: expected['duration'] = self.store.get(request_id)['payload']['duration']
+        source_url=video['url']
+        result=download_video(source_url, directory, filename=filename, expected_metadata=expected, timeout=timeout)
+        result.update(request_id=request_id, conversation_id=status.get('conversation_id'), message_id=status.get('message_id'),
+                      task_id=status.get('task_id'), source_url=source_url, url_lr=lr(video),
+                      resource_source=video['source'], selected_video_index=selected_index, identity_verified=verified)
+        if request_id: self.store.update(request_id,last_download=result)
         return result

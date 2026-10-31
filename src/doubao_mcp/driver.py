@@ -47,10 +47,15 @@ def main():
                     request.get("message_id"),request.get("task_id"))
             elif action == "video_confirm":
                 result = VideoWorkflow(driver).confirm(request.get("request_id"))
+            elif action == "video_open_detail":
+                result = VideoWorkflow(driver).open_detail(request.get("request_id"),request.get("conversation_id"),
+                    request.get("message_id"),request.get("task_id"),request.get("timeout",30))
             elif action == "video_download":
                 result = VideoWorkflow(driver).download(request.get("directory"),request.get("request_id"),
                     request.get("conversation_id"),request.get("message_id"),request.get("task_id"),
-                    request.get("filename"),request.get("video_index",0),request.get("timeout",180))
+                    request.get("filename"),request.get("video_index"),request.get("timeout",180),
+                    resource_kind=request.get("resource_kind","unwatermarked"),
+                    open_detail_if_needed=request.get("open_detail_if_needed",True))
             elif action == "ask":
                 result = driver.ask(request["prompt"], request.get("new_chat", False), request.get("timeout", 120),
                                     request.get("conversation_id"), request.get("title"))

@@ -1,6 +1,6 @@
 # 豆包桌面端 MCP
 
-让 Codex 等 MCP 客户端在后台使用本机已登录的豆包 Windows 桌面端，切换已添加账号、管理对话、上传图片并绑定真实引用、提交和查询视频任务、下载成品。当前版本：0.5.0，共21个工具。
+让 Codex 等 MCP 客户端在后台使用本机已登录的豆包 Windows 桌面端，切换已添加账号、管理对话、上传图片并绑定真实引用、提交和查询视频任务、打开视频详情并下载客户端提供的无水印成品。当前版本：0.6.0，共22个工具。
 
 调用路径：MCP 客户端 → Python stdio 服务 → 独立驱动进程 → 本机 CDP → 豆包页面。
 正常调用不激活原生窗口、不移动鼠标、不发送系统键盘事件，也不占用剪贴板；豆包可以保持最小化。
@@ -23,13 +23,14 @@
 | `doubao_video_configure` | 后台设置视频模型、画面比例、整数秒数，回读核验；不提交生成 |
 | `doubao_video_exit` | 退出视频模式，返回普通对话输入 |
 | `doubao_upload_images` | 从本地绝对路径上传图片，按真实资源、上传进度和文件摘要核验 |
-| `doubao_bind_image` | 从实际 `@` 候选绑定图片，回读结构化引用与真实资源ID |
+| `doubao_bind_image` | 按文件名搜索实际 `@` 候选，绑定默认前五项之外的图片并回读真实资源ID |
 | `doubao_inspect_media` | 只读附件、引用节点和完整草稿，用于超时核查 |
 | `doubao_video_prepare` | 准备完整提示词，保留真实图片引用，不发送 |
 | `doubao_video_submit` | 核对全文、参数和图片绑定后单次发送，持久化幂等记录 |
 | `doubao_video_task_status` | 按原请求或真实消息/任务ID查询状态，不重发 |
 | `doubao_video_confirm` | 待确认时核对豆包列出的参数，最多发送一次生成确认 |
-| `doubao_video_download` | 根据真实完成任务下载视频，读取MP4实际时长和尺寸 |
+| `doubao_video_open_detail` | 按真实任务后台打开右侧详情，核验目标消息与详情播放器关联，取得正式资源 |
+| `doubao_video_download` | 默认严格下载无水印源，需要时自动打开详情；返回实际源、哈希及MP4时长和尺寸 |
 
 ## 切换账号
 
@@ -108,6 +109,8 @@ ID 使用字符串，支持带 `conversation_` 前缀，避免大整数精度损
 
 1. 先配置模型、比例和整数秒数，再上传图片。已有附件或草稿时，设置工具会停止以保护现有内容。
 2. 调用 `doubao_upload_images`，例如 `{"paths":["C:\\Images\\reference.png"]}`；使用返回的真实 `asset_id` 调用 `doubao_bind_image`。上传返回本地摘要、远程资源与完成证据；绑定必须选中实际候选并读到 `inputEngineMention`，只写文件名不会通过。
+
+   当前客户端在只输入 `@` 时默认列出前5张附件，这不是总上传上限。0.5.1开始，绑定工具会用文件名中可搜索的部分过滤候选，再按完整名称和真实资源ID选中，支持中文和带空格的文件名。本机已验证8张图片均上传完成、8个真实引用全部绑定，并通过视频准备回读；未提交生成。MCP上传接口最多接收10张，客户端和模型的实际可用数量仍需以当前页面为准。
 3. 用 `doubao_video_prepare` 准备完整提示词。提示词使用 `@实际文件名`，资源使用上传结果的ID：
 
 ```json
@@ -123,11 +126,35 @@ ID 使用字符串，支持带 `conversation_` 前缀，避免大整数精度损
 `request_id` 是本地幂等编号，不能当作远程任务ID。每条新任务使用唯一编号；同一编号再次调用只查询原记录。不同内容不能复用同一编号。发送前保存永久尝试标记，即使点击后断连也不会再次发送。
 
 5. 用 `doubao_video_task_status({"request_id":"shot-001"})` 跟踪。若豆包先要求参数确认，状态为 `confirmation_required`，此时尚无生成任务；调用 `doubao_video_confirm({"request_id":"shot-001"})` 核对确认页的模型、比例、秒数后，最多发送一次确认。确认超时也只查询原请求。
-6. 完成后调用 `doubao_video_download`，例如 `{"request_id":"shot-001", "directory":"C:\\Videos", "filename":"shot-001.mp4"}`。只下载真实任务关联的成品，不接受任意URL；不覆盖已有文件。返回绝对路径、字节数、SHA-256、MP4实测时长/宽高及与任务要求的差异。
+6. 完成后调用 `doubao_video_download`，例如 `{"request_id":"shot-001", "directory":"C:\\Videos", "filename":"shot-001.mp4"}`。默认取得客户端提供的 `lr=unwatermarked` 资源，必要时自动打开目标视频详情；正式源不可用时明确报错。只下载真实任务关联的成品，不接受任意URL、不覆盖已有文件。返回实际源URL、任务身份、绝对路径、字节数、SHA-256、MP4实测时长/宽高及与任务要求的差异。
 
 状态包括 `queued`、`generating`、`completed`、`failed`、`quota_exceeded`、`confirmation_required`；未取得充分证据时返回 `submission_unknown`、`unknown`、`not_visible` 或 `ambiguous`。回复尚未结束时可能为 `responding`。返回观测到的真实 `conversation_id`、`user_message_id`、`message_id`、`task_id` 和状态证据，不虚构远程任务ID。
 
 **遇到超时，先按原 request_id 查询，不能换编号重新提交。** 提交与确认分阶段分别去重；这两个操作可能消耗生成额度。草稿、附件、全文或参数不一致时停止，不覆盖其他提示词。普通输入不能绕过图片绑定验证。
+
+## 视频详情与无水印下载
+
+AI可以按任务直接下载，也可以先打开详情核查资源后再下载。两个工具均使用当前后台通道与桌面锁，不要求用户预先手动打开右侧面板。
+
+`doubao_video_open_detail` 接受原 `request_id`，或真实 `conversation_id` 加 `message_id` / `task_id`；建议同时提供已核实的消息和任务ID。`timeout` 为5–60秒。示例参数：
+
+```json
+{"conversation_id":"12345678901234567", "message_id":"23456789012345678", "task_id":"34567890123456789", "timeout":30}
+```
+
+工具在目标消息内定位唯一完成视频卡片，将封面滚动到可点击位置，检查实时命中后通过CDP页面事件打开“图片与视频”详情。目标消息播放器与右侧播放器的真实资源必须匹配，且资源URL含 `lr=unwatermarked`，才返回 `identity_verified:true`。目标详情已打开且一致时返回 `already_open:true`，不重复点击。草稿、附件、生成、确认或遮挡弹窗会阻止操作；身份冲突不会猜测“最新视频”。
+
+`doubao_video_download` 默认参数为 `resource_kind:"unwatermarked"`、`open_detail_if_needed:true`，可从详情关闭状态自动完成打开、身份校验、源选择与下载。下载使用客户端实际返回的完整签名URL，不修改 `lr` 或签名、不重新生成，也不转码或删除AIGC元数据。回执中的 `source_url`、`url_lr`、`resource_source`、`selected_video_index` 和任务ID记录本次真正使用的资源；索引仅为观察值，不能作为下一次下载的稳定身份。
+
+```json
+{"request_id":"shot-001", "directory":"C:\\Videos", "filename":"shot-001.mp4", "resource_kind":"unwatermarked", "open_detail_if_needed":true}
+```
+
+只有调用方显式指定 `resource_kind:"preview"` 才允许下载卡片预览。`open_detail_if_needed:false` 用于只取已经加载且已核验的正式源。`video_index` 默认自动选择；显式索引必须与目标任务及要求的资源类型一致，不能固定为某个值。正式资源不存在时不会静默降级预览。更新旧调用方时注意：0.6.0的默认下载从预览改为严格正式源。
+
+详情未加载、任务/消息冲突、多卡歧义、遮挡或归属无法核验时均返回明确错误；详情或下载超时不触发生成/确认，也不会覆盖已有文件。
+
+真实MCP验收脚本为 `scripts/smoke_detail.py`，按已有完成任务传入 `--conversation-id`、`--message-id`、`--task-id`、`--directory`。加 `--closed-start` 会先关闭只读“图片与视频”标签，再验证默认下载能自动打开详情；不会关闭编辑中的面板。测试从其他应用运行，并采样豆包是否成为前台，回执仅写入 `.runtime`。
 
 幂等账本保存在 `.runtime/video_tasks`，记录原提示词与任务关联；重新安装时应保留该目录。公开ZIP排除全部 `.runtime`。换电脑后，本地请求编号不会自动迁移，可使用真实对话/消息/任务ID查询同账号记录。
 
@@ -188,7 +215,7 @@ codex mcp get doubao-desktop
 .\.venv\Scripts\python.exe scripts\package_portable.py
 ```
 
-打包同时输出 `dist/doubao-desktop-v0.5.0-windows.zip` 与同名 `.sha256` 校验文件，方便上传 GitHub Release。ZIP 是源码安装包，目标电脑仍需按照安装说明配置 Python、依赖及已登录的豆包。
+打包同时输出 `dist/doubao-desktop-v0.6.0-windows.zip` 与同名 `.sha256` 校验文件，方便上传 GitHub Release。ZIP 是源码安装包，目标电脑仍需按照安装说明配置 Python、依赖及已登录的豆包。
 
 ## 行为与范围
 

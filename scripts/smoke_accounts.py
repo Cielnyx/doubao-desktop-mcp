@@ -65,7 +65,7 @@ async def main():
         async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=120)) as session:
             await session.initialize()
             tools = {tool.name for tool in (await session.list_tools()).tools}
-            assert len(tools) == 21 and {"doubao_list_accounts","doubao_switch_account"} <= tools, tools
+            assert len(tools) == 22 and {"doubao_list_accounts","doubao_switch_account"} <= tools, tools
             evidence["tool_count"] = len(tools)
             before = await call(session,"doubao_status")
             assert before["ok"], before

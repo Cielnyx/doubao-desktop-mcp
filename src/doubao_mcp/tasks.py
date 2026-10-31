@@ -298,6 +298,10 @@ class VideoTaskReader:
         else:
             selected = [row for row in rows if row.get("role") == "assistant" and
                         (row.get("task_ids") or row.get("card") or row.get("videos"))]
+        if task_id and message_id and any(row.get("message_id") != message_id for row in selected):
+            raise TaskError("TASK_BINDING_CONFLICT", "任务不属于指定消息。")
+        if len(selected) > 1 and task_id:
+            raise TaskError("TARGET_AMBIGUOUS", "任务对应多个卡片，无法唯一确认。")
         if record and ((task_id and not record.get("task_id")) or (message_id and not record.get("message_id"))):
             allowed = {row.get("message_id") for row in scope} | ({anchor} if anchor else set())
             if not anchor or not allowed:

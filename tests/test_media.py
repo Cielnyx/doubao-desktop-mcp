@@ -94,6 +94,29 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(error.exception.code,"IMAGE_LABEL_MISMATCH")
         media.driver.client.call.assert_not_called()
 
+    def test_later_image_is_searched_then_selected_by_real_resource(self):
+        media = MediaDriver(Mock())
+        state = self.state(tuple(f"image-{i}.png" for i in range(8)))
+        bound = {**state,"bindings":[{"asset_id":"7","resource_id":"7"}]}
+        media.inspect = Mock(side_effect=[state,bound])
+        media._call = Mock(side_effect=[{"context":{"route":"/chat"},"insert_text":"@image-7.png"},
+            {"candidates":[{"resource_id":"7","label":"image-7.png"}]},{"ok":True}])
+        result = media.bind("7")
+        self.assertTrue(result["binding_verified"])
+        media.driver.client.call.assert_called_once_with("Input.insertText",{"text":"@image-7.png"})
+        self.assertEqual(media._call.call_args.args,("selectCandidate",))
+        self.assertEqual(media._call.call_args.kwargs["asset_id"],"7")
+
+    def test_existing_filename_search_is_resumed_without_duplicate_text(self):
+        media = MediaDriver(Mock())
+        state = self.state()
+        bound = {**state,"bindings":[{"asset_id":"0"}]}
+        media.inspect = Mock(side_effect=[state,bound])
+        media._call = Mock(side_effect=[{"context":{},"trigger_already_present":True},
+            {"candidates":[{"resource_id":"0"}]},{"ok":True}])
+        self.assertTrue(media.bind("0")["binding_verified"])
+        media.driver.client.call.assert_not_called()
+
     def test_missing_or_duplicate_reference_is_rejected_before_editor_changes(self):
         media = MediaDriver(Mock())
         media.inspect = lambda:self.state()

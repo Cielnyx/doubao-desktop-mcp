@@ -68,7 +68,7 @@ async def main():
         async with ClientSession(read, write, read_timeout_seconds=timedelta(seconds=360)) as session:
             await session.initialize()
             names = {tool.name for tool in (await session.list_tools()).tools}
-            assert len(names) == 21, names
+            assert len(names) == 22, names
             status = await call(session, "doubao_status")
             assert status["background"]
             listing = await call(session, "doubao_list_conversations", {"limit": 50})

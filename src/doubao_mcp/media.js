@@ -19,9 +19,28 @@ const doubaoMedia = (() => {
   }
   function attachmentStates() {
     const element=document.querySelector('[data-testid="attachment_area"]') || document.querySelector('[data-testid="attachment-image-card"]');
-    let fiber=element?.[Object.keys(element).find(k=>k.startsWith('__reactFiber'))];
-    for(let i=0;fiber && i<24;i++,fiber=fiber.return) {
-      if(Array.isArray(fiber.memoizedProps?.attachmentStates)) return fiber.memoizedProps.attachmentStates;
+    const raw=element?.[Object.keys(element).find(k=>k.startsWith('__reactFiber'))];
+    if(raw) {
+      // DOM host pointers and return links can refer to a previous React commit.
+      // Follow the committed root's child tree and retain its actual parent path.
+      let top=raw;
+      for(let i=0;top.return && i<200;i++) top=top.return;
+      const root=top.stateNode?.current, stack=root?[{fiber:root,parent:null}]:[], seen=new Set();
+      let found=null;
+      while(stack.length && seen.size<100000) {
+        const entry=stack.pop(), fiber=entry.fiber;
+        if(seen.has(fiber)) continue;
+        seen.add(fiber);
+        if(fiber===raw || fiber===raw.alternate) {found=entry;break;}
+        const siblings=new Set();
+        for(let child=fiber.child;child && !siblings.has(child);child=child.sibling) {
+          siblings.add(child);stack.push({fiber:child,parent:entry});
+        }
+      }
+      for(let entry=found,i=0;entry && i<24;entry=entry.parent,i++) {
+        if(Array.isArray(entry.fiber.memoizedProps?.attachmentStates)) return entry.fiber.memoizedProps.attachmentStates;
+      }
+      fail('MEDIA_LAYOUT_CHANGED','无法从当前已渲染组件验证附件状态，未使用可能过期的上传信息。');
     }
     if(document.querySelector('[data-testid="attachment-image-card"]'))
       fail('MEDIA_LAYOUT_CHANGED','有图片附件，但无法验证客户端实际上传状态。');
@@ -111,11 +130,34 @@ const doubaoMedia = (() => {
     const [asset]=requireAssets([asset_id],state);
     if(state.unresolved_mentions.length) fail('UNRESOLVED_IMAGE_REFERENCE','输入区已有无法解析的引用，请先处理。');
     if(state.bindings.some(b=>b.asset_id===asset_id)) return {...state,already_bound:true};
-    if(state.draft_text.endsWith('@') && candidates().candidates.some(c=>c.resource_id===asset_id))
-      return {ok:true,context:state.context,asset,before_json:state.editor_json,already_bound:false,trigger_already_present:true};
-    editor().commands.focus('end',{scrollIntoView:false});
+    if(state.assets.filter(a=>a.name===asset.name).length!==1)
+      fail('AMBIGUOUS_IMAGE_LABEL','当前存在同名图片，请先重命名后上传，避免搜索候选被截断。');
+    // Spaces terminate the client's mention query. Pick the most selective
+    // whitespace-free part, but still validate the full label and resource ID.
+    const terms=asset.name.split(/[\s@]+/u).filter(Boolean);
+    terms.sort((a,b)=>state.assets.filter(x=>x.name.toLowerCase().includes(a.toLowerCase())).length-
+      state.assets.filter(x=>x.name.toLowerCase().includes(b.toLowerCase())).length || b.length-a.length);
+    const search=terms[0];
+    if(!search) fail('IMAGE_SEARCH_UNAVAILABLE','图片文件名没有可用于 @ 搜索的内容。');
+    const rich=editor();
+    rich.commands.focus('end',{scrollIntoView:false});
+    const query='@'+search;
+    if(state.draft_text.endsWith(query))
+      return {ok:true,context:state.context,asset,before_json:state.editor_json,already_bound:false,
+        trigger_already_present:true,candidate_query:search};
+    if(search!==asset.name && state.draft_text.endsWith('@'+asset.name)) {
+      const end=rich.state.selection.from, from=end-asset.name.length;
+      if(from<1 || rich.state.selection.to!==end || rich.state.doc.textBetween(from,end,'\n')!==asset.name)
+        fail('IMAGE_SEARCH_UNVERIFIED','无法安全确认待替换的图片搜索文字，保留草稿。');
+      rich.commands.setTextSelection({from,to:end});
+      return {ok:true,context:state.context,asset,before_json:state.editor_json,already_bound:false,
+        candidate_query:search,insert_text:search,replaced_filename_query:true};
+    }
+    // A bare @ shows only the first five current attachments in this client.
+    // Search the real filename, then let selectCandidate verify its resource ID.
     return {ok:true,context:state.context,asset,before_json:state.editor_json,already_bound:false,
-      insert_text:state.draft_text && !/\s$/.test(state.draft_text)?' @':'@'};
+      candidate_query:search,insert_text:state.draft_text.endsWith('@')?search:
+        (state.draft_text && !/\s$/.test(state.draft_text)?' ':'')+query};
   }
   function selectCandidate({asset_id,expected_context}) {
     guard(expected_context);
